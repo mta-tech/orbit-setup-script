@@ -1,0 +1,44 @@
+name: orbit_agent
+
+services:
+  orbit-typesense:
+    image: typesense/typesense:26.0
+    container_name: orbit-typesense
+    restart: on-failure
+    ports:
+      - "8108:8108"
+    volumes:
+      - ./typesense/dbdata:/data
+    command: '--data-dir /data --api-key=kai_typesense --enable-cors'
+    env_file:
+      - .env.kai
+
+  orbit-text2sql-agent:
+    image: ghcr.io/mta-tech/kai:v0.2.4
+    container_name: orbit-text2sql-agent
+    hostname: orbit-text2sql-agent
+    restart: on-failure
+    ports:
+      - "8005:8005"
+    depends_on:
+      - orbit-typesense
+    environment:
+      - TYPESENSE_HOST=orbit-typesense
+    env_file:
+      - .env.kai
+    networks:
+      - default
+
+  orbit-worker:
+    image: ghcr.io/mta-tech/orbit-worker:latest
+    container_name: orbit-worker
+    restart: on-failure
+    depends_on:
+      - orbit-text2sql-agent
+    env_file:
+      - .env.orbit
+
+networks:
+  default:
+    external: true
+    name: agentic_network
