@@ -99,7 +99,7 @@ def setup_geolocation(args):
     try:
         migration_script = os.path.join(
             os.path.dirname(os.path.abspath(__file__)),
-            'geolocation-migration-script',
+            'geo-migration-script',
             'geolocation-migration-script.py'
         )
         
