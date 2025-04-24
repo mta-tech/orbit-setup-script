@@ -25,12 +25,20 @@ git clone [repository-url]
 cd orbit-setup-script
 ```
 
-2. Install dependencies:
+2. Clone the geolocation migration script repository:
 ```bash
-pip install -e .
+git clone https://github.com/mta-tech/geo-migration-script.git
 ```
 
-3. Create environment files:
+3. Install dependencies using uv:
+```bash
+uv pip install -e .
+cd geo-migration-script
+uv pip install -e .
+cd ..
+```
+
+4. Create environment files:
 
 ### `.env.kai`
 ```env
