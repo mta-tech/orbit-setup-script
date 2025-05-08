@@ -102,18 +102,62 @@ MODEL_NAME=gemini-2.0-flash
 
 ## Usage
 
-The script can be run with various command-line arguments to specify the configuration:
+The script can be run either with a config file or with command-line arguments:
 
-### Basic Usage
+### Using Config File
 
+```bash
+python setup.py --config config.json
+```
+
+The config.json file should have the following structure:
+```json
+{
+  "api_key": "your-api-key",
+  "process_type": "initial_provisioning_orbit",
+  "process_id": "optional-process-id",
+  "step_order": 0,
+  "data": {
+    "jwt_token": "your-jwt-token",
+    "orbit_configuration": {
+      "connection_string": "postgresql://user:password@host:port/database",
+      "db_connection": {
+        "host": "localhost",
+        "port": 5432,
+        "database": "your_database",
+        "username": "your_username",
+        "password": "your_password"
+      }
+    },
+    "agent": {
+      "agent_name": "your-agent-name",
+      "agent_description": "your-agent-description"
+    },
+    "geolocation_reference": {
+      "source_table": "your_source_table",
+      "province_col": "province_column",
+      "city_col": "city_column",
+      "district_col": "district_column",
+      "subdistrict_col": "subdistrict_column",
+      "province": "static_province",
+      "city": "static_city",
+      "district": "static_district",
+      "subdistrict": "static_subdistrict"
+    }
+  }
+}
+```
+
+### Using Command Line Arguments
+
+Basic usage with database URI:
 ```bash
 python setup.py \
   --api-key "your-api-key" \
   --db-connection-uri "postgresql://user:password@host:port/database"
 ```
 
-### With Individual Database Parameters
-
+With individual database parameters:
 ```bash
 python setup.py \
   --api-key "your-api-key" \
@@ -124,13 +168,12 @@ python setup.py \
   --db-password "your_password"
 ```
 
-### With Geolocation Feature
-
+With geolocation feature:
 ```bash
 python setup.py \
   --api-key "your-api-key" \
   --db-connection-uri "postgresql://user:password@host:port/database" \
-  --fact-table "your_fact_table" \
+  --source_table "your_source_table" \
   --province-col "province_column" \
   --city-col "city_column" \
   --district-col "district_column"
@@ -138,10 +181,11 @@ python setup.py \
 
 ## Available Arguments
 
-### Required Arguments
+### Configuration Source (Required, choose one)
+- `--config`: Path to config.json file
 - `--api-key`: API Key for authentication
 
-### Database Connection (Required, choose one option)
+### Database Connection (Required when not using config file)
 - `--db-connection-uri`: Full database connection URI
   OR
 - `--db-host`: Database host
@@ -150,8 +194,13 @@ python setup.py \
 - `--db-user`: Database username
 - `--db-password`: Database password
 
+### Agent Configuration (Optional)
+- `--agent-name`: Name of the agent
+- `--agent-description`: Description of the agent
+- `--jwt-token`: JWT token for authentication
+
 ### Geolocation Arguments (Optional)
-- `--fact-table`: Name of the source fact table containing location data
+- `--source_table`: Name of the source table containing location data
 - `--province-col`: Column name for province in fact table
 - `--city-col`: Column name for city in fact table
 - `--district-col`: Column name for district in fact table
@@ -162,6 +211,21 @@ python setup.py \
 - `--city`: Static city value
 - `--district`: Static district value
 - `--subdistrict`: Static sub-district value
+
+## Process Types
+
+The script supports different process types that determine the required parameters:
+
+1. **initial_provisioning_orbit**: Full setup of Orbit services including KAI and worker deployment
+   - Requires API key
+   - Deploys all Docker services
+   - Configures KAI service
+   - Sets up geolocation (if parameters provided)
+
+2. **create_agent_orbit**: Creates an agent when services are already deployed
+   - API key is optional (assumes KAI and worker services are already running)
+   - Only configures database connection and schema
+   - Sets up geolocation if parameters provided
 
 ## Docker Services
 

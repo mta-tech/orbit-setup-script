@@ -178,3 +178,6 @@ docker/typesense/*
 geolocation-migration-scripts/*
 
 .env.*
+
+# config json
+*.json

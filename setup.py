@@ -7,14 +7,19 @@ import argparse
 import urllib.parse
 from dotenv import load_dotenv
 from google.cloud import pubsub_v1
+from datetime import datetime
 
 def parse_args():
     """Parse command line arguments"""
     parser = argparse.ArgumentParser(description='Setup Orbit services and configuration')
-    parser.add_argument('--api-key', required=True, help='API Key for authentication')
+    
+    # Add mutually exclusive group for config source
+    config_group = parser.add_mutually_exclusive_group()  # Removed required=True
+    config_group.add_argument('--config', type=str, help='Path to config.json file')
+    config_group.add_argument('--api-key', help='API Key for authentication')
     
     # Database connection group - either URI or individual parameters
-    db_group = parser.add_mutually_exclusive_group(required=True)
+    db_group = parser.add_mutually_exclusive_group()
     db_group.add_argument('--db-connection-uri', help='Database connection URI')
     db_group.add_argument('--db-host', help='Database host')
     parser.add_argument('--db-port', type=int, default=5432, help='Database port (default: 5432)')
@@ -22,18 +27,100 @@ def parse_args():
     parser.add_argument('--db-user', help='Database username')
     parser.add_argument('--db-password', help='Database password')
     
-    # Geolocation arguments
-    parser.add_argument('--fact-table', help='Fact table name for geolocation')
+    # Agent configuration
+    parser.add_argument('--agent-name', help='Name of the agent')
+    parser.add_argument('--agent-description', help='Description of the agent')
+    parser.add_argument('--jwt-token', help='JWT token for authentication')
+
+    # Geolocation reference configuration
+    parser.add_argument('--source_table', dest='source_table', help='Source table name for geolocation')
     parser.add_argument('--province-col', help='Province column name in fact table')
     parser.add_argument('--city-col', help='City column name in fact table')
     parser.add_argument('--district-col', help='District column name in fact table')
     parser.add_argument('--subdistrict-col', help='Sub-district column name in fact table')
-    # Static location values
     parser.add_argument('--province', help='Static province value')
     parser.add_argument('--city', help='Static city value')
     parser.add_argument('--district', help='Static district value')
     parser.add_argument('--subdistrict', help='Static sub-district value')
-    return parser.parse_args()
+    
+    args = parser.parse_args()
+    
+    # If config file is provided, load and validate it
+    if args.config:
+        try:
+            with open(args.config, 'r') as f:
+                config = json.load(f)
+            
+            # Extract values from config
+            args.data = config
+            args.api_key = args.data.get('api_key')
+            data = args.data.get('data', {})
+            
+            # Extract JWT token and orbit configuration
+            args.jwt_token = data.get('jwt_token')
+            
+            # Extract orbit configuration
+            orbit_config = data.get('orbit_configuration', {})
+            args.db_connection_uri = orbit_config.get('connection_string')
+            
+            db_conn = orbit_config.get('db_connection')
+            if db_conn:
+                args.db_host = db_conn.get('host')
+                args.db_port = db_conn.get('port')
+                args.db_name = db_conn.get('database')
+                args.db_user = db_conn.get('username')
+                args.db_password = db_conn.get('password')
+            
+            # Extract agent configuration
+            agent = data.get('agent', {})
+            args.agent_name = agent.get('agent_name')
+            args.agent_description = agent.get('agent_description')
+            
+            # Extract geolocation reference
+            geo_ref = data.get('geolocation_reference', {})
+            if geo_ref:
+                args.source_table = geo_ref.get('source_table')
+                args.province_col = geo_ref.get('province_col')
+                args.city_col = geo_ref.get('city_col')
+                args.district_col = geo_ref.get('district_col')
+                args.subdistrict_col = geo_ref.get('subdistrict_col')
+                args.province = geo_ref.get('province')
+                args.city = geo_ref.get('city')
+                args.district = geo_ref.get('district')
+                args.subdistrict = geo_ref.get('subdistrict')
+            
+            # Validate required fields based on process type
+            if args.data.get("process_type") == "initial_provisioning_orbit":
+                if not args.api_key:
+                    raise ValueError("API key is required for initial_provisioning_orbit")
+            elif args.data.get("process_type") == "create_agent_orbit":
+                # API key not required for agent creation
+                pass
+            else:
+                # For any other process type or when process_type is not specified
+                if not args.api_key:
+                    raise ValueError("API key is required when process_type is not specified")
+                    
+            if not (args.db_connection_uri or (db_conn and all([args.db_host, args.db_name, args.db_user, args.db_password]))):
+                raise ValueError("Missing database configuration. Provide either connection_string or db_connection details")
+                
+        except (json.JSONDecodeError, FileNotFoundError) as e:
+            raise ValueError(f"Error reading config file: {e}")
+    
+    # When not using config file
+    else:
+        # Set default process type and data structure
+        args.data = {
+            "process_type": "create_agent_orbit",  # Default to agent creation
+            "process_id": None,
+            "step_order": 0
+        }
+        
+        # Validate database configuration
+        if not args.db_connection_uri and not all([args.db_host, args.db_name, args.db_user, args.db_password]):
+            raise ValueError("When not using --config or --db-connection-uri, you must specify --db-host, --db-name, --db-user, and --db-password")
+    
+    return args
 
 def build_connection_uri(args):
     """Build database connection URI from individual parameters"""
@@ -48,7 +135,7 @@ def build_connection_uri(args):
     password = urllib.parse.quote_plus(args.db_password)  # URL encode the password
     return f"postgresql://{args.db_user}:{password}@{args.db_host}:{args.db_port}/{args.db_name}"
 
-def run_docker_compose(api_key):
+def run_docker_compose(api_key, args):
     """Deploy KAI and orbit worker services using docker-compose"""
     try:
         # Create the required Docker network if it doesn't exist
@@ -82,16 +169,36 @@ def run_docker_compose(api_key):
         print("Docker services started successfully")
         # Give services some time to start up
         time.sleep(10)
+
+        if args.data["process_id"]:
+            # Create a new process in the KAI service
+            args.data['step_order'] += 1
+            process_payload = {
+                "process_id": args.data['process_id'],
+                "step": "Docker compose services started",
+                "step_order": args.data['step_order'],
+                "message": "KAI service and orbit worker services started successfully",
+                "modified_at": datetime.now().isoformat()
+            }
+            response = requests.post(
+                "http://localhost:8000/api/v1/provision/orbit/notification",
+                headers={
+                    "Authorization": args.jwt_token,
+                    "Content-Type": "application/json"
+                },
+                json=process_payload
+            )
+            response.raise_for_status()
+            print("Notification sent to main service")
+        else:
+            pass
+
     except subprocess.CalledProcessError as e:
         print(f"Error starting docker services: {e}")
         raise
     except IOError as e:
         print(f"Error updating .env.orbit file: {e}")
         raise
-
-def should_run_geolocation(args):
-    """Check if geolocation migration should be run based on provided arguments"""
-    return args.db_connection_uri and args.fact_table
 
 def setup_geolocation(args):
     """Execute geolocation migration if required arguments are provided"""
@@ -116,7 +223,7 @@ def setup_geolocation(args):
             cmd.extend(['--user', args.db_user])
             
         # Add fact table name
-        cmd.extend(['--fact-table', args.fact_table])
+        cmd.extend(['--fact-table', args.source_table])
         
         # Add optional column names if provided
         if args.province_col:
@@ -145,10 +252,10 @@ def setup_geolocation(args):
         print(f"Error during geolocation setup: {e}")
         raise
 
-def configure_kai_service(connection_uri):
+def configure_kai_service(connection_uri, args):
     """Configure KAI service with database connections and schemas"""
     # Load environment variables
-    kai_address = "http://localhost:8005"  # Using localhost since script runs outside Docker
+    kai_address = "http://localhost:8005"
     
     try:
         print("Configuring KAI service...")
@@ -193,29 +300,33 @@ def configure_kai_service(connection_uri):
         )
         response.raise_for_status()
         print("KAI service configured successfully")
+
+        if args.data['process_id']:
+            # Create a new process in the KAI service
+            args.data["step_order"] += 1
+            process_payload = {
+                "process_id": args.data['process_id'],
+                "step": "KAI service configured",
+                "step_order": args.data['step_order'],
+                "message": "KAI service configured successfully",
+                "modified_at": datetime.now().isoformat()
+            }
+            response = requests.post(
+                "http://localhost:8000/api/v1/provision/orbit/notification",
+                headers={
+                    "Authorization": args.jwt_token,
+                    "Content-Type": "application/json"
+                },
+                json=process_payload
+            )
+            response.raise_for_status()
+            print("Notification sent to main service")
+        else:
+            pass
         
     except requests.exceptions.RequestException as e:
         print(f"Error configuring KAI service: {e}")
         raise
-
-def publish_domain_created():
-    """Publish message to create.domain topic"""
-    publisher = pubsub_v1.PublisherClient()
-    topic_path = publisher.topic_path(
-        os.getenv('GOOGLE_CLOUD_PROJECT'),
-        'create.domain'
-    )
-    
-    message = {
-        "status": "completed",
-        "timestamp": time.time()
-    }
-    
-    future = publisher.publish(
-        topic_path,
-        json.dumps(message).encode('utf-8')
-    )
-    print(f"Message published: {future.result()}")
 
 def main():
     try:
@@ -225,18 +336,36 @@ def main():
         # Build connection URI from args
         connection_uri = build_connection_uri(args)
         
-        # Step 1: Deploy services
-        run_docker_compose(args.api_key)
+        
+        if args.data["process_type"] == "initial_provisioning_orbit":
+            print("Initial provisioning for orbit...")
+            # Step 1: Deploy services
+            run_docker_compose(args.api_key, args)
         
         # Step 2: Setup geolocation if required args are provided
-        if args.fact_table:
+        if args.source_table:
             setup_geolocation(args)
         
         # Step 3: Configure KAI service
-        configure_kai_service(connection_uri)
+        configure_kai_service(connection_uri, args)
         
         # Step 4: Publish completion message
-        # publish_domain_created()
+        if args.data['process_id']:
+            args.data['step_order'] += 1
+            process_payload = args.data
+            response = requests.post(
+                "http://localhost:8000/api/v1/provision/orbit/agent",
+                headers={
+                    "Authorization": args.jwt_token,
+                    "Content-Type": "application/json"
+                },
+                json=process_payload
+            )
+            print(f"Process payload: {json.dumps(process_payload, indent=2)}")
+            response.raise_for_status()
+            print("Publuished to agent creation topic")
+        else:
+            pass
         
         print("Setup completed successfully!")
         

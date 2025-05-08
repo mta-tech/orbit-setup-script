@@ -14,7 +14,7 @@ services:
       - .env.kai
 
   orbit-text2sql-agent:
-    image: ghcr.io/mta-tech/kai:v0.2.4
+    image: ghcr.io/mta-tech/kai:latest
     container_name: orbit-text2sql-agent
     hostname: orbit-text2sql-agent
     restart: on-failure
