@@ -14,7 +14,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Setup Orbit services and configuration')
     
     # Add mutually exclusive group for config source
-    config_group = parser.add_mutually_exclusive_group()  # Removed required=True
+    config_group = parser.add_mutually_exclusive_group()
     config_group.add_argument('--config', type=str, help='Path to config.json file')
     config_group.add_argument('--api-key', help='API Key for authentication')
     
@@ -31,17 +31,6 @@ def parse_args():
     parser.add_argument('--agent-name', help='Name of the agent')
     parser.add_argument('--agent-description', help='Description of the agent')
     parser.add_argument('--jwt-token', help='JWT token for authentication')
-
-    # Geolocation reference configuration
-    parser.add_argument('--source_table', dest='source_table', help='Source table name for geolocation')
-    parser.add_argument('--province-col', help='Province column name in fact table')
-    parser.add_argument('--city-col', help='City column name in fact table')
-    parser.add_argument('--district-col', help='District column name in fact table')
-    parser.add_argument('--subdistrict-col', help='Sub-district column name in fact table')
-    parser.add_argument('--province', help='Static province value')
-    parser.add_argument('--city', help='Static city value')
-    parser.add_argument('--district', help='Static district value')
-    parser.add_argument('--subdistrict', help='Static sub-district value')
     
     args = parser.parse_args()
     
@@ -75,19 +64,6 @@ def parse_args():
             agent = data.get('agent', {})
             args.agent_name = agent.get('agent_name')
             args.agent_description = agent.get('agent_description')
-            
-            # Extract geolocation reference
-            geo_ref = data.get('geolocation_reference', {})
-            if geo_ref:
-                args.source_table = geo_ref.get('source_table')
-                args.province_col = geo_ref.get('province_col')
-                args.city_col = geo_ref.get('city_col')
-                args.district_col = geo_ref.get('district_col')
-                args.subdistrict_col = geo_ref.get('subdistrict_col')
-                args.province = geo_ref.get('province')
-                args.city = geo_ref.get('city')
-                args.district = geo_ref.get('district')
-                args.subdistrict = geo_ref.get('subdistrict')
             
             # Validate required fields based on process type
             if args.data.get("process_type") == "initial_provisioning_orbit":
@@ -200,57 +176,7 @@ def run_docker_compose(api_key, args):
         print(f"Error updating .env.orbit file: {e}")
         raise
 
-def setup_geolocation(args):
-    """Execute geolocation migration if required arguments are provided"""
-    print("Setting up geolocation feature...")
-    try:
-        migration_script = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)),
-            'geo-migration-script',
-            'geolocation-migration-script.py'
-        )
-        
-        # Prepare command arguments
-        cmd = ['uv', 'run', migration_script]  # Changed from python to uv run
-        
-        # Add connection parameters (either URI or individual params)
-        if args.db_connection_uri:
-            cmd.extend(['--connection-uri', args.db_connection_uri])
-        else:
-            cmd.extend(['--host', args.db_host])
-            cmd.extend(['--port', str(args.db_port)])
-            cmd.extend(['--database', args.db_name])
-            cmd.extend(['--user', args.db_user])
-            
-        # Add fact table name
-        cmd.extend(['--fact-table', args.source_table])
-        
-        # Add optional column names if provided
-        if args.province_col:
-            cmd.extend(['--province-col', args.province_col])
-        if args.city_col:
-            cmd.extend(['--city-col', args.city_col])
-        if args.district_col:
-            cmd.extend(['--district-col', args.district_col])
-        if args.subdistrict_col:
-            cmd.extend(['--subdistrict-col', args.subdistrict_col])
-            
-        # Add static values if provided
-        if args.province:
-            cmd.extend(['--province', args.province])
-        if args.city:
-            cmd.extend(['--city', args.city])
-        if args.district:
-            cmd.extend(['--district', args.district])
-        if args.subdistrict:
-            cmd.extend(['--subdistrict', args.subdistrict])
-        
-        subprocess.run(cmd, check=True)
-        print("Geolocation setup completed successfully")
-        
-    except subprocess.CalledProcessError as e:
-        print(f"Error during geolocation setup: {e}")
-        raise
+
 
 def configure_kai_service(connection_uri, args):
     """Configure KAI service with database connections and schemas"""
@@ -336,20 +262,15 @@ def main():
         # Build connection URI from args
         connection_uri = build_connection_uri(args)
         
-        
         if args.data["process_type"] == "initial_provisioning_orbit":
             print("Initial provisioning for orbit...")
             # Step 1: Deploy services
             run_docker_compose(args.api_key, args)
         
-        # Step 2: Setup geolocation if required args are provided
-        if args.source_table:
-            setup_geolocation(args)
-        
-        # Step 3: Configure KAI service
+        # Step 2: Configure KAI service
         configure_kai_service(connection_uri, args)
         
-        # Step 4: Publish completion message
+        # Step 3: Publish completion message
         if args.data['process_id']:
             args.data['step_order'] += 1
             process_payload = args.data

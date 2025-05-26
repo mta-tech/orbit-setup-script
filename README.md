@@ -6,7 +6,6 @@ A Python script for setting up Orbit services including KAI (Knowledge Agent for
 
 - Automated deployment of Orbit services using Docker Compose
 - KAI service configuration with database connections
-- Geolocation feature setup with flexible hierarchy levels
 - Support for both connection URI and individual database parameters
 - Docker network management for service communication
 
@@ -15,7 +14,7 @@ A Python script for setting up Orbit services including KAI (Knowledge Agent for
 - Python 3.11 or higher
 - Docker and Docker Compose
 - PostgreSQL database
-- UV package manager (for geolocation script)
+- UV package manager
 
 ## Installation
 
@@ -25,17 +24,9 @@ git clone [repository-url]
 cd orbit-setup-script
 ```
 
-2. Clone the geolocation migration script repository:
-```bash
-git clone https://github.com/mta-tech/geo-migration-script.git
-```
-
-3. Install dependencies using uv:
+2. Install dependencies using uv:
 ```bash
 uv pip install -e .
-cd geo-migration-script
-uv pip install -e .
-cd ..
 ```
 
 4. Create environment files:
@@ -98,6 +89,7 @@ ORBIT_API_KEY=your-orbit-api-key
 KAI_URL=http://orbit-text2sql-agent:8005/api
 MODEL_FAMILY=google
 MODEL_NAME=gemini-2.0-flash
+WORKER_THREAD_COUNT=20
 ```
 
 ## Usage
@@ -132,17 +124,6 @@ The config.json file should have the following structure:
     "agent": {
       "agent_name": "your-agent-name",
       "agent_description": "your-agent-description"
-    },
-    "geolocation_reference": {
-      "source_table": "your_source_table",
-      "province_col": "province_column",
-      "city_col": "city_column",
-      "district_col": "district_column",
-      "subdistrict_col": "subdistrict_column",
-      "province": "static_province",
-      "city": "static_city",
-      "district": "static_district",
-      "subdistrict": "static_subdistrict"
     }
   }
 }
@@ -168,17 +149,6 @@ python setup.py \
   --db-password "your_password"
 ```
 
-With geolocation feature:
-```bash
-python setup.py \
-  --api-key "your-api-key" \
-  --db-connection-uri "postgresql://user:password@host:port/database" \
-  --source_table "your_source_table" \
-  --province-col "province_column" \
-  --city-col "city_column" \
-  --district-col "district_column"
-```
-
 ## Available Arguments
 
 ### Configuration Source (Required, choose one)
@@ -199,19 +169,6 @@ python setup.py \
 - `--agent-description`: Description of the agent
 - `--jwt-token`: JWT token for authentication
 
-### Geolocation Arguments (Optional)
-- `--source_table`: Name of the source table containing location data
-- `--province-col`: Column name for province in fact table
-- `--city-col`: Column name for city in fact table
-- `--district-col`: Column name for district in fact table
-- `--subdistrict-col`: Column name for sub-district in fact table
-
-### Static Location Values (Optional)
-- `--province`: Static province value
-- `--city`: Static city value
-- `--district`: Static district value
-- `--subdistrict`: Static sub-district value
-
 ## Process Types
 
 The script supports different process types that determine the required parameters:
@@ -220,12 +177,10 @@ The script supports different process types that determine the required paramete
    - Requires API key
    - Deploys all Docker services
    - Configures KAI service
-   - Sets up geolocation (if parameters provided)
 
 2. **create_agent_orbit**: Creates an agent when services are already deployed
    - API key is optional (assumes KAI and worker services are already running)
    - Only configures database connection and schema
-   - Sets up geolocation if parameters provided
 
 ## Docker Services
 
@@ -250,7 +205,6 @@ The script includes comprehensive error handling for:
 - Database connection issues
 - Docker service deployment failures
 - Configuration errors
-- Geolocation setup problems
 
 If any errors occur, the script will provide detailed error messages and exit gracefully.
 
@@ -260,4 +214,3 @@ If any errors occur, the script will provide detailed error messages and exit gr
 - Services are configured to restart on failure
 - The KAI service requires some time to initialize (10 seconds delay after startup)
 - All sensitive information should be properly secured in the environment files
-- The geolocation feature requires access to a master geolocation database

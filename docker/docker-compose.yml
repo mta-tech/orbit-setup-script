@@ -30,7 +30,7 @@ services:
       - default
 
   orbit-worker:
-    image: ghcr.io/mta-tech/orbit-worker:latest
+    image: ghcr.io/mta-tech/java-orbit-worker:latest
     container_name: orbit-worker
     restart: on-failure
     depends_on:

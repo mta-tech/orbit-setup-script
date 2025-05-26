@@ -175,8 +175,6 @@ cython_debug/
 
 docker/typesense/*
 
-geolocation-migration-scripts/*
-
 .env.*
 
 # config json
