@@ -9,6 +9,10 @@ from dotenv import load_dotenv
 from google.cloud import pubsub_v1
 from datetime import datetime
 
+load_dotenv()
+PROVISIONING_SERVICE_HOST = os.getenv('PROVISIONING_SERVICE_HOST', 'http://localhost:8007')
+
+print(PROVISIONING_SERVICE_HOST)
 def parse_args():
     """Parse command line arguments"""
     parser = argparse.ArgumentParser(description='Setup Orbit services and configuration')
@@ -149,15 +153,17 @@ def run_docker_compose(api_key, args):
         if args.data["process_id"]:
             # Create a new process in the KAI service
             args.data['step_order'] += 1
+            print(args.data['step_order'])
             process_payload = {
                 "process_id": args.data['process_id'],
                 "step": "Docker compose services started",
                 "step_order": args.data['step_order'],
+                "status": "success",
                 "message": "KAI service and orbit worker services started successfully",
                 "modified_at": datetime.now().isoformat()
             }
             response = requests.post(
-                "http://localhost:8000/api/v1/provision/orbit/notification",
+                f"{PROVISIONING_SERVICE_HOST}/api/v1/provision/orbit/notification",
                 headers={
                     "Authorization": args.jwt_token,
                     "Content-Type": "application/json"
@@ -234,11 +240,12 @@ def configure_kai_service(connection_uri, args):
                 "process_id": args.data['process_id'],
                 "step": "KAI service configured",
                 "step_order": args.data['step_order'],
+                "status": "success",
                 "message": "KAI service configured successfully",
                 "modified_at": datetime.now().isoformat()
             }
             response = requests.post(
-                "http://localhost:8000/api/v1/provision/orbit/notification",
+                f"{PROVISIONING_SERVICE_HOST}/api/v1/provision/orbit/notification",
                 headers={
                     "Authorization": args.jwt_token,
                     "Content-Type": "application/json"
@@ -250,6 +257,7 @@ def configure_kai_service(connection_uri, args):
         else:
             pass
         
+        return db_connection_id
     except requests.exceptions.RequestException as e:
         print(f"Error configuring KAI service: {e}")
         raise
@@ -268,14 +276,15 @@ def main():
             run_docker_compose(args.api_key, args)
         
         # Step 2: Configure KAI service
-        configure_kai_service(connection_uri, args)
+        db_connection_id = configure_kai_service(connection_uri, args)
         
         # Step 3: Publish completion message
         if args.data['process_id']:
             args.data['step_order'] += 1
             process_payload = args.data
+            process_payload["db_connection_id"] = db_connection_id
             response = requests.post(
-                "http://localhost:8000/api/v1/provision/orbit/agent",
+                f"{PROVISIONING_SERVICE_HOST}/api/v1/provision/orbit/agent",
                 headers={
                     "Authorization": args.jwt_token,
                     "Content-Type": "application/json"

@@ -37,6 +37,12 @@ services:
       - orbit-text2sql-agent
     env_file:
       - .env.orbit
+  orbit-redis:
+    image: redis:7-alpine
+    container_name: orbit-redis
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--bind", "0.0.0.0", "--protected-mode", "no"]
 
 networks:
   default:
