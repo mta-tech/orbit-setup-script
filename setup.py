@@ -276,7 +276,10 @@ def main():
             run_docker_compose(args.api_key, args)
         
         # Step 2: Configure KAI service
-        db_connection_id = configure_kai_service(connection_uri, args)
+        try:
+            db_connection_id = configure_kai_service(connection_uri, args)
+        except:
+            db_connection_id = configure_kai_service(connection_uri+"?sslmode=require", args)
         
         # Step 3: Publish completion message
         if args.data['process_id']:
@@ -291,7 +294,6 @@ def main():
                 },
                 json=process_payload
             )
-            print(f"Process payload: {json.dumps(process_payload, indent=2)}")
             response.raise_for_status()
             print("Publuished to agent creation topic")
         else:
