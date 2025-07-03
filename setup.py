@@ -91,7 +91,7 @@ def parse_args():
     else:
         # Set default process type and data structure
         args.data = {
-            "process_type": "create_agent_orbit",  # Default to agent creation
+            "process_type": "initial_provisioning_orbit",  # Default to agent creation
             "process_id": None,
             "step_order": 0
         }
@@ -269,12 +269,11 @@ def main():
         
         # Build connection URI from args
         connection_uri = build_connection_uri(args)
-        
         if args.data["process_type"] == "initial_provisioning_orbit":
             print("Initial provisioning for orbit...")
             # Step 1: Deploy services
             run_docker_compose(args.api_key, args)
-        
+
         # Step 2: Configure KAI service
         try:
             db_connection_id = configure_kai_service(connection_uri, args)
